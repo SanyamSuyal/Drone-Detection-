@@ -1,0 +1,13 @@
+🔌 Final Pin Assignments
+Component	Arduino Pin	Notes
+Ultrasonic Sensor Trig	9	Trigger pin for HC-SR04
+Ultrasonic Sensor Echo	10	Echo pin for HC-SR04
+Ultrasonic Servo Motor	6	Servo that rotates ultrasonic sensor
+Relay Module IN	7	Controls blackout relay
+Buzzer	8	Siren buzzer output
+IR Sensor 1	A0	Optional ground motion sensor 1
+IR Sensor 2	A1	Optional ground motion sensor 2
+Red LEDs (3 LEDs)	2, 3, 4	Flashing panic lights (each with resistor)
+City LEDs (optional)	5, 6, 11	Regular city lights LEDs (optional)
+Laser Servo Pan Motor	3	Pan servo for laser pointer (optional)
+Laser Servo Tilt Motor	5	Tilt servo for laser pointer (optional)
