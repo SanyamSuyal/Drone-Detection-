@@ -20,21 +20,6 @@ This is ideal for simulating security zones, restricted airspaces, or sensitive 
 
 ---
 
-## 🔧 Components Required
-
-| Component             | Quantity |
-|-----------------------|----------|
-| Arduino Uno           | 1        |
-| Ultrasonic Sensor (HC-SR04) | 1  |
-| Servo Motor (SG90)    | 1        |
-| Relay Module          | 1        |
-| White LED (or light)  | 1        |
-| Red LEDs              | Multiple |
-| Buzzer                | 1        |
-| Jumper Wires          | –        |
-| Breadboard            | 1        |
-| External power supply | Optional |
-
 ---
 
 
