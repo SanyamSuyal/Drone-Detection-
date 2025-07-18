@@ -37,18 +37,6 @@ This is ideal for simulating security zones, restricted airspaces, or sensitive 
 
 ---
 
-## 🪛 Pin Configuration
-
-| Component       | Arduino Pin |
-|-----------------|-------------|
-| Ultrasonic Trig | D9          |
-| Ultrasonic Echo | D8          |
-| Servo Motor     | D10         |
-| White Light     | D11         |
-| Red Light       | D12         |
-| Buzzer          | D7          |
-
-> ⚠️ Relay is connected to control the white light.
 
 ---
 
