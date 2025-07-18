@@ -1,0 +1,271 @@
+Final Code (x2.0)(gamma-g)
+
+#include <Servo.h>
+
+// ====== CONFIGURATION FLAGS ======
+#define USE_ULTRASONIC_SERVO   true   // Scan ultrasonic with servo
+#define USE_RELAY_BLACKOUT     true   // Control relay for blackout
+#define USE_BUZZER             true   // Use buzzer siren
+#define USE_RED_LEDS           true   // Flash red LEDs on alert
+#define USE_IR_SENSORS         true   // Use IR sensors for extra detection
+#define USE_LASER_SERVO        false  // Use laser servo aiming (optional)
+
+// ====== PIN DEFINITIONS ======
+#define trigPin 9
+#define echoPin 10
+#define relayPin 7
+#define buzzerPin 8
+#define ir1Pin A0
+#define ir2Pin A1
+
+int redLEDs[] = {2, 3, 4};
+const int numRedLEDs = sizeof(redLEDs) / sizeof(redLEDs[0]);
+
+int cityLEDs[] = {5, 6, 11};  // Optional city LEDs (if you want to control directly)
+const int numCityLEDs = sizeof(cityLEDs) / sizeof(cityLEDs[0]);
+
+// Servo pins
+#define ultrasonicServoPin 6
+#define laserServoPanPin 3
+#define laserServoTiltPin 5
+
+// ====== GLOBALS ======
+Servo ultrasonicServo;
+Servo laserServoPan;
+Servo laserServoTilt;
+
+long duration;
+int distance;
+
+unsigned long lastDetectionTime = 0;
+const unsigned long blackoutDuration = 5000; // 5 seconds
+
+bool alertActive = false;
+
+// For scanning ultrasonic servo
+int scanStartAngle = 0;
+int scanEndAngle = 180;
+int scanStep = 10;
+
+void setup() {
+  Serial.begin(9600);
+
+  // Setup pins
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  if (USE_RELAY_BLACKOUT)
+    pinMode(relayPin, OUTPUT);
+
+  if (USE_BUZZER)
+    pinMode(buzzerPin, OUTPUT);
+
+  if (USE_IR_SENSORS) {
+    pinMode(ir1Pin, INPUT);
+    pinMode(ir2Pin, INPUT);
+  }
+
+  if (USE_RED_LEDS) {
+    for (int i = 0; i < numRedLEDs; i++) {
+      pinMode(redLEDs[i], OUTPUT);
+      digitalWrite(redLEDs[i], LOW);
+    }
+  }
+
+  if (numCityLEDs > 0) {
+    for (int i = 0; i < numCityLEDs; i++) {
+      pinMode(cityLEDs[i], OUTPUT);
+      digitalWrite(cityLEDs[i], HIGH);  // Start city lights ON
+    }
+  }
+
+  // Setup servo(s)
+  if (USE_ULTRASONIC_SERVO) {
+    ultrasonicServo.attach(ultrasonicServoPin);
+    ultrasonicServo.write(scanStartAngle);
+  }
+
+  if (USE_LASER_SERVO) {
+    laserServoPan.attach(laserServoPanPin);
+    laserServoTilt.attach(laserServoTiltPin);
+    laserServoPan.write(90);
+    laserServoTilt.write(90);
+  }
+
+  // Initial states
+  if (USE_RELAY_BLACKOUT)
+    digitalWrite(relayPin, LOW); // Lights ON (no blackout)
+
+  if (USE_BUZZER)
+    digitalWrite(buzzerPin, LOW);
+}
+
+void loop() {
+  bool detected = false;
+  int detectedDistance = 999;  // Large initial value
+
+  if (USE_ULTRASONIC_SERVO) {
+    detectedDistance = scanWithUltrasonicServo();
+    if (detectedDistance < 50) {
+      detected = true;
+      Serial.print("Detected object at distance: ");
+      Serial.println(detectedDistance);
+    }
+  } else {
+    // If not scanning with servo, just do one reading forward
+    detectedDistance = readUltrasonicDistance();
+    if (detectedDistance < 50) {
+      detected = true;
+      Serial.print("Detected object (no servo scan) at distance: ");
+      Serial.println(detectedDistance);
+    }
+  }
+
+  if (USE_IR_SENSORS) {
+    int ir1Val = digitalRead(ir1Pin);
+    int ir2Val = digitalRead(ir2Pin);
+
+    if (ir1Val == LOW || ir2Val == LOW) {
+      detected = true;
+      Serial.println("IR sensor detected motion!");
+    }
+  }
+
+  if (detected) {
+    if (!alertActive) {
+      alertActive = true;
+      lastDetectionTime = millis();
+      startAlert();
+    }
+
+    if (USE_LASER_SERVO) {
+      aimLaserAtDistance(detectedDistance);
+    }
+
+  } else {
+    if (alertActive && (millis() - lastDetectionTime > blackoutDuration)) {
+      alertActive = false;
+      stopAlert();
+
+      if (USE_LASER_SERVO) {
+        resetLaser();
+      }
+    }
+  }
+
+  if (alertActive && USE_RED_LEDS) {
+    flashRedLEDs();
+  } else if (USE_RED_LEDS) {
+    turnOffRedLEDs();
+  }
+
+  delay(50);
+}
+
+// --- Functions ---
+
+int scanWithUltrasonicServo() {
+  int closestDistance = 999;
+  int closestAngle = scanStartAngle;
+
+  for (int angle = scanStartAngle; angle <= scanEndAngle; angle += scanStep) {
+    ultrasonicServo.write(angle);
+    delay(300);  // Wait for servo to move and sensor stabilize
+
+    int d = readUltrasonicDistance();
+    if (d > 0 && d < closestDistance) {
+      closestDistance = d;
+      closestAngle = angle;
+    }
+  }
+
+  Serial.print("Closest distance: ");
+  Serial.print(closestDistance);
+  Serial.print(" at angle ");
+  Serial.println(closestAngle);
+
+  // Optionally: move servo to closest angle to "track" object
+  ultrasonicServo.write(closestAngle);
+
+  return closestDistance;
+}
+
+int readUltrasonicDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  long duration = pulseIn(echoPin, HIGH, 30000);  // 30ms timeout
+  if (duration == 0) return 999;  // No echo detected
+
+  int distanceCm = duration * 0.034 / 2;
+  return distanceCm;
+}
+
+void startAlert() {
+  Serial.println("!!! ALERT ACTIVATED !!!");
+
+  if (USE_RELAY_BLACKOUT)
+    digitalWrite(relayPin, HIGH);  // Relay HIGH = blackout
+
+  if (USE_BUZZER)
+    digitalWrite(buzzerPin, HIGH);
+}
+
+void stopAlert() {
+  Serial.println("Alert stopped.");
+
+  if (USE_RELAY_BLACKOUT)
+    digitalWrite(relayPin, LOW);  // Lights back ON
+
+  if (USE_BUZZER)
+    digitalWrite(buzzerPin, LOW);
+}
+
+void flashRedLEDs() {
+  static unsigned long lastFlash = 0;
+  static bool ledState = false;
+  unsigned long now = millis();
+
+  if (now - lastFlash > 300) {
+    ledState = !ledState;
+    for (int i = 0; i < numRedLEDs; i++) {
+      digitalWrite(redLEDs[i], ledState ? HIGH : LOW);
+    }
+    lastFlash = now;
+  }
+}
+
+void turnOffRedLEDs() {
+  for (int i = 0; i < numRedLEDs; i++) {
+    digitalWrite(redLEDs[i], LOW);
+  }
+}
+
+void aimLaserAtDistance(int distance) {
+  // Simple demo: map distance to tilt angle
+  int tiltAngle = map(distance, 10, 50, 120, 60);
+  tiltAngle = constrain(tiltAngle, 60, 120);
+
+  laserServoTilt.write(tiltAngle);
+
+  // Pan servo does slow sweeping motion
+  static int panAngle = 60;
+  static bool increasing = true;
+
+  if (increasing) {
+    panAngle++;
+    if (panAngle > 120) increasing = false;
+  } else {
+    panAngle--;
+    if (panAngle < 60) increasing = true;
+  }
+  laserServoPan.write(panAngle);
+}
+
+void resetLaser() {
+  laserServoPan.write(90);
+  laserServoTilt.write(90);
+}
