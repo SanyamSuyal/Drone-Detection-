@@ -1,5 +1,5 @@
 Final Code (x2.0)(gamma-g)
-
+Writer/Creator - Sanyam Suyal
 #include <Servo.h>
 
 // ====== CONFIGURATION FLAGS ======
