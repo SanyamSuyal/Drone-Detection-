@@ -1,5 +1,5 @@
 # 🔴 Drone Detection & Automated Blackout System  
-**Created & Engineered by Sanyam Suyal**
+**Coded by Sanyam Suyal**
 
 ## 💡 Overview
 This project is a smart **anti-drone defense system** using an Arduino Uno, ultrasonic sensor, relay module, servo motor, buzzer, and indicator lights. The system detects drones within a defined proximity and automatically performs a **simulated blackout** by switching off white lights, turning on red warning lights, and sounding a buzzer alarm.
