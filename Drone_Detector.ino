@@ -105,6 +105,7 @@ void loop() {
   bool detected = false;
   int detectedDistance = 999;
 
+  // ======= Ultrasonic Detection, with "not triggered" log =======
   if (USE_ULTRASONIC_SERVO) {
     detectedDistance = scanWithUltrasonicServo();
     if (detectedDistance < 50) {
@@ -112,19 +113,26 @@ void loop() {
       Serial.print("🔍 Detected at ");
       Serial.print(detectedDistance);
       Serial.println(" cm");
+    } else {
+      Serial.println("✅ US not triggered");
     }
   } else {
     detectedDistance = readUltrasonicDistance();
     if (detectedDistance < 50) {
       detected = true;
       Serial.println("🔍 Static Detection Triggered!");
+    } else {
+      Serial.println("✅ US not triggered");
     }
   }
 
+  // ======= IR Sensor Detection, with "not triggered" log =======
   if (USE_IR_SENSORS) {
     if (digitalRead(ir1Pin) == LOW || digitalRead(ir2Pin) == LOW) {
       detected = true;
       Serial.println("⚠️ IR Sensor Triggered!");
+    } else {
+      Serial.println("✅ IR Sensor not triggered");
     }
   }
 
