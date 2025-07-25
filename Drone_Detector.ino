@@ -18,16 +18,23 @@
 #include <Servo.h>
 
 // ====== CONFIGURATION FLAGS ======
-#define USE_ULTRASONIC_SERVO   true    // Servo radar scan
-#define USE_RELAY_BLACKOUT     true    // Control blackout relay
-#define USE_BUZZER             true    // Buzzer alarm
-#define USE_RED_LEDS           true    // Red LED flashing
-#define USE_IR_SENSORS         true    // IR sensor triggers
-#define USE_LASER_SERVO        false   // Optional: laser targeting
+#define USE_ULTRASONIC_SERVO         true    // Servo radar scan for first sensor
+#define USE_SECOND_ULTRASONIC_SERVO  true    // Enable second servo + ultrasonic sensor for 360 coverage
+#define USE_RELAY_BLACKOUT           true    // Control blackout relay
+#define USE_BUZZER                   true    // Buzzer alarm
+#define USE_RED_LEDS                 true    // Red LED flashing
+#define USE_IR_SENSORS               true    // IR sensor triggers
+#define USE_LASER_SERVO              false   // Optional: laser targeting
 
 // ====== PIN DEFINITIONS ======
-#define trigPin 9
-#define echoPin 10
+#define trigPin1 9
+#define echoPin1 10
+#define servoPin1 6
+
+#define trigPin2 12                  // New ultrasonic trig pin for second sensor
+#define echoPin2 13                  // New ultrasonic echo pin for second sensor
+#define servoPin2 11                 // New servo pin for second servo
+
 #define relayPin 7
 #define buzzerPin 8
 #define ir1Pin A0
@@ -39,32 +46,48 @@ const int numRedLEDs = sizeof(redLEDs) / sizeof(redLEDs[0]);
 int cityLEDs[] = {5, 6, 11};           // City lights (can be relayed)
 const int numCityLEDs = sizeof(cityLEDs) / sizeof(cityLEDs[0]);
 
-#define ultrasonicServoPin 6           // Servo for ultrasonic scanner
 #define laserServoPanPin 3             // Optional laser panning
 #define laserServoTiltPin 5            // Optional laser tilt
 
 // ====== GLOBALS ======
-Servo ultrasonicServo;
+Servo ultrasonicServo1;
+Servo ultrasonicServo2;                 // Second servo
 Servo laserServoPan;
 Servo laserServoTilt;
 
-long duration;
-int distance;
 bool alertActive = false;
 
 unsigned long lastDetectionTime = 0;
 const unsigned long blackoutDuration = 5000; // 5 sec active time
 
-int scanStartAngle = 0;
-int scanEndAngle = 180;
-int scanStep = 10;
+// First servo scan config (0 - 180 degrees)
+int scanStartAngle1 = 0;
+int scanEndAngle1 = 180;
+int scanStep1 = 10;
+
+// Second servo scan config (180 - 360 degrees)
+// Since servo physically rotates 0-180°, we'll map this to 180-360° for logic purposes
+// Servo moves 0-180°, we treat that as 180-360 degrees sector
+int scanStartAngle2 = 0;   // servo degrees, corresponds to 180 degrees logical sector start
+int scanEndAngle2 = 180;   // servo degrees
+
+// Function prototypes for second sensor scanning
+int scanWithSecondUltrasonicServo();
+int readUltrasonicDistance(int trigPin, int echoPin);
 
 void setup() {
   Serial.begin(9600);
   Serial.println("🛠️ Sanyam Suyal's Drone Defense System Booting...");
 
-  pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
+  // First ultrasonic sensor pins
+  pinMode(trigPin1, OUTPUT);
+  pinMode(echoPin1, INPUT);
+  
+  // Second ultrasonic sensor pins (new)
+  if (USE_SECOND_ULTRASONIC_SERVO) {
+    pinMode(trigPin2, OUTPUT);
+    pinMode(echoPin2, INPUT);
+  }
 
   if (USE_RELAY_BLACKOUT) pinMode(relayPin, OUTPUT);
   if (USE_BUZZER) pinMode(buzzerPin, OUTPUT);
@@ -86,8 +109,13 @@ void setup() {
   }
 
   if (USE_ULTRASONIC_SERVO) {
-    ultrasonicServo.attach(ultrasonicServoPin);
-    ultrasonicServo.write(scanStartAngle);
+    ultrasonicServo1.attach(servoPin1);
+    ultrasonicServo1.write(scanStartAngle1);
+  }
+
+  if (USE_SECOND_ULTRASONIC_SERVO) {
+    ultrasonicServo2.attach(servoPin2);
+    ultrasonicServo2.write(scanStartAngle2);
   }
 
   if (USE_LASER_SERVO) {
@@ -105,28 +133,44 @@ void loop() {
   bool detected = false;
   int detectedDistance = 999;
 
-  // ======= Ultrasonic Detection, with "not triggered" log =======
+  int detectedDistance1 = 999;
+  int detectedDistance2 = 999;
+
+  // ==== First Ultrasonic Sensor Scan ====
   if (USE_ULTRASONIC_SERVO) {
-    detectedDistance = scanWithUltrasonicServo();
-    if (detectedDistance < 50) {
+    detectedDistance1 = scanWithUltrasonicServo();
+    if (detectedDistance1 < 50) {
       detected = true;
-      Serial.print("🔍 Detected at ");
-      Serial.print(detectedDistance);
+      Serial.print("🔍 Sensor 1 Detected at ");
+      Serial.print(detectedDistance1);
       Serial.println(" cm");
     } else {
-      Serial.println("✅ US not triggered");
+      Serial.println("✅ Sensor 1 US not triggered");
     }
   } else {
-    detectedDistance = readUltrasonicDistance();
-    if (detectedDistance < 50) {
+    detectedDistance1 = readUltrasonicDistance(trigPin1, echoPin1);
+    if (detectedDistance1 < 50) {
       detected = true;
-      Serial.println("🔍 Static Detection Triggered!");
+      Serial.println("🔍 Sensor 1 Static Detection Triggered!");
     } else {
-      Serial.println("✅ US not triggered");
+      Serial.println("✅ Sensor 1 US not triggered");
     }
   }
 
-  // ======= IR Sensor Detection, with "not triggered" log =======
+  // ==== Second Ultrasonic Sensor Scan (if enabled) ====
+  if (USE_SECOND_ULTRASONIC_SERVO) {
+    detectedDistance2 = scanWithSecondUltrasonicServo();
+    if (detectedDistance2 < 50) {
+      detected = true;
+      Serial.print("🔍 Sensor 2 Detected at ");
+      Serial.print(detectedDistance2);
+      Serial.println(" cm");
+    } else {
+      Serial.println("✅ Sensor 2 US not triggered");
+    }
+  }
+
+  // ==== IR Sensors ====
   if (USE_IR_SENSORS) {
     if (digitalRead(ir1Pin) == LOW || digitalRead(ir2Pin) == LOW) {
       detected = true;
@@ -136,6 +180,10 @@ void loop() {
     }
   }
 
+  // ==== Determine closest distance from both sensors ====
+  detectedDistance = (detectedDistance1 < detectedDistance2) ? detectedDistance1 : detectedDistance2;
+
+  // ==== Alert Logic ====
   if (detected) {
     if (!alertActive) {
       alertActive = true;
@@ -143,7 +191,8 @@ void loop() {
       startAlert();
     }
     if (USE_LASER_SERVO) aimLaserAtDistance(detectedDistance);
-  } else if (alertActive && millis() - lastDetectionTime > blackoutDuration) {
+  } 
+  else if (alertActive && millis() - lastDetectionTime > blackoutDuration) {
     alertActive = false;
     stopAlert();
     if (USE_LASER_SERVO) resetLaser();
@@ -159,23 +208,43 @@ void loop() {
 
 int scanWithUltrasonicServo() {
   int closestDistance = 999;
-  int closestAngle = scanStartAngle;
+  int closestAngle = scanStartAngle1;
 
-  for (int angle = scanStartAngle; angle <= scanEndAngle; angle += scanStep) {
-    ultrasonicServo.write(angle);
+  for (int angle = scanStartAngle1; angle <= scanEndAngle1; angle += scanStep1) {
+    ultrasonicServo1.write(angle);
     delay(300);
-    int d = readUltrasonicDistance();
+    int d = readUltrasonicDistance(trigPin1, echoPin1);
     if (d > 0 && d < closestDistance) {
       closestDistance = d;
       closestAngle = angle;
     }
   }
 
-  ultrasonicServo.write(closestAngle);
+  ultrasonicServo1.write(closestAngle);
   return closestDistance;
 }
 
-int readUltrasonicDistance() {
+// Scanning for second servo + ultrasonic sensor (same logic as first, different pins)
+int scanWithSecondUltrasonicServo() {
+  int closestDistance = 999;
+  int closestAngle = scanStartAngle2;
+
+  for (int angle = scanStartAngle2; angle <= scanEndAngle2; angle += scanStep1) {
+    ultrasonicServo2.write(angle);
+    delay(300);
+    int d = readUltrasonicDistance(trigPin2, echoPin2);
+    if (d > 0 && d < closestDistance) {
+      closestDistance = d;
+      closestAngle = angle;
+    }
+  }
+
+  ultrasonicServo2.write(closestAngle);
+  return closestDistance;
+}
+
+// Generic ultrasonic reading function used for both sensors
+int readUltrasonicDistance(int trigPin, int echoPin) {
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
@@ -194,7 +263,7 @@ void startAlert() {
   if (USE_BUZZER) digitalWrite(buzzerPin, HIGH);
 
   for (int i = 0; i < numCityLEDs; i++) {
-    digitalWrite(cityLEDs[i], LOW);  // Turn OFF white lights
+    digitalWrite(cityLEDs[i], LOW);  // Turn OFF city lights
   }
 }
 
